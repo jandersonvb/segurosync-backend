@@ -1,0 +1,157 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Branch {
+  AUTO
+  VIDA
+  SAUDE
+  RESIDENCIAL
+  EMPRESARIAL
+  RC_PROFISSIONAL
+}
+
+enum PolicyStatus {
+  VIGENTE
+  RENOVACAO_PENDENTE
+  SINISTRO_ABERTO
+  CANCELADA
+}
+
+enum CommissionStatus {
+  PAGO
+  A_RECEBER
+  DIVERGENCIA
+  ESTORNADO
+}
+
+model Brokerage {
+  id          String      @id @default(uuid())
+  name        String
+  susepCode   String      @unique
+  cnpj        String      @unique
+  producers   Producer[]
+  policies    Policy[]
+  leads       Lead[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Producer {
+  id            String      @id @default(uuid())
+  brokerageId   String
+  name          String
+  cpf           String      @unique
+  email         String
+  phone         String
+  splitRate     Decimal     @default(40.0) // % padrão do produtor sobre a comissão da corretora
+  brokerage     Brokerage   @relation(fields: [brokerageId], references: [id])
+  policies      Policy[]
+  leads         Lead[]
+  createdAt     DateTime    @default(now())
+}
+
+model Lead {
+  id                String          @id @default(uuid())
+  brokerageId       String
+  producerId        String?
+  clientName        String
+  document          String
+  email             String
+  phone             String
+  branch            Branch
+  itemDetails       String
+  status            String          @default("NOVO")
+  score             Int             @default(85)
+  estimatedPremium  Decimal
+  targetCommission  Decimal         @default(20.0)
+  brokerage         Brokerage       @relation(fields: [brokerageId], references: [id])
+  producer          Producer?       @relation(fields: [producerId], references: [id])
+  quotes            QuoteHistory[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+model QuoteHistory {
+  id              String      @id @default(uuid())
+  leadId          String
+  insurer         String
+  netPremium      Decimal
+  totalPremium    Decimal
+  commissionValue Decimal
+  commissionRate  Decimal
+  lead            Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt       DateTime    @default(now())
+}
+
+model Policy {
+  id                    String              @id @default(uuid())
+  policyNumber          String              @unique
+  ciCode                String?
+  brokerageId           String
+  producerId            String?
+  clientName            String
+  document              String
+  branch                Branch
+  itemDescription       String
+  insurer               String
+  startDate             DateTime
+  endDate               DateTime
+  netPremium            Decimal
+  totalPremium          Decimal
+  brokerCommissionRate  Decimal
+  producerSplitRate     Decimal
+  status                PolicyStatus        @default(VIGENTE)
+  paymentMethod         String              @default("Cartão 12x Sem Juros")
+  brokerage             Brokerage           @relation(fields: [brokerageId], references: [id])
+  producer              Producer?           @relation(fields: [producerId], references: [id])
+  claims                Claim[]
+  commissions           CommissionLedger[]
+  audits                CommissionAudit[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+}
+
+model CommissionLedger {
+  id              String            @id @default(uuid())
+  policyId        String
+  installment     String            @default("1/1")
+  premiumPaid     Decimal
+  grossAmount     Decimal
+  producerShare   Decimal
+  houseNetShare   Decimal
+  status          CommissionStatus  @default(A_RECEBER)
+  dueDate         DateTime
+  paidAt          DateTime?
+  policy          Policy            @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  createdAt       DateTime          @default(now())
+}
+
+model CommissionAudit {
+  id          String      @id @default(uuid())
+  policyId    String
+  insurer     String
+  expected    Decimal
+  received    Decimal
+  reason      String
+  status      String      @default("PENDENTE_CONTESTACAO")
+  policy      Policy      @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+}
+
+model Claim {
+  id            String      @id @default(uuid())
+  claimNumber   String      @unique
+  policyId      String
+  eventType     String
+  claimedAmount Decimal
+  workshopName  String?
+  status        String      @default("ABERTO")
+  dateReported  DateTime    @default(now())
+  policy        Policy      @relation(fields: [policyId], references: [id], onDelete: Cascade)
+}
